@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prophet Weather Forecaster</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --card: #1c2128; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --blue: #388bfd; --green: #3fb950;
+    --orange: #f0883e; --red: #f85149; --purple: #bc8cff;
+    --teal: #39d353; --yellow: #d29922;
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+  
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+  header h1 { font-size: 1.25rem; font-weight: 600; }
+  header p { font-size: 0.8rem; color: var(--muted); }
+  .badge { background: #388bfd22; color: var(--blue); border: 1px solid #388bfd44; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 500; }
+
+  main { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .control-group label { display: block; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  select, input[type=range] { width: 100%; background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 6px; font-size: 0.85rem; appearance: none; cursor: pointer; }
+  select:focus { outline: none; border-color: var(--blue); }
+
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+  .metric { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
+  .metric-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .metric-value { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .metric-sub { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
+  .up { color: var(--red); } .down { color: var(--green); } .neutral { color: var(--blue); }
+
+  .view-tabs { display: flex; gap: 6px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .tab { background: var(--card); border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
+  .tab:hover { border-color: var(--blue); color: var(--text); }
+  .tab.active { background: #388bfd1a; border-color: var(--blue); color: var(--blue); }
+
+  .chart-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 1.5rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; }
+  .card-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 2px; }
+  .card-sub { font-size: 0.72rem; color: var(--muted); margin-bottom: 1rem; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--muted); }
+  .lsq { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .ldash { width: 18px; height: 2px; border-top: 2px dashed; flex-shrink: 0; }
+  .lband { width: 18px; height: 8px; border-radius: 2px; opacity: 0.5; flex-shrink: 0; }
+
+  .small-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1.5rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 500; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: 500; }
+  .pill-warm { background: #f0883e22; color: var(--orange); border: 1px solid #f0883e44; }
+  .pill-cool { background: #388bfd22; color: var(--blue); border: 1px solid #388bfd44; }
+  .pill-rain { background: #3fb95022; color: var(--green); border: 1px solid #3fb95044; }
+  .pill-high { background: #f8514922; color: var(--red); border: 1px solid #f8514944; }
+  .pill-ok   { background: #bc8cff22; color: var(--purple); border: 1px solid #bc8cff44; }
+
+  #loadingOverlay { display: none; position: fixed; inset: 0; background: rgba(13,17,23,0.85); z-index: 100; align-items: center; justify-content: center; flex-direction: column; gap: 1rem; }
+  #loadingOverlay.show { display: flex; }
+  .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--muted); font-size: 0.85rem; }
+
+  .data-source { font-size: 0.7rem; color: var(--muted); margin-top: 0.5rem; padding: 0.5rem 1rem; background: var(--surface); border-radius: 6px; border: 1px solid var(--border); }
+  .data-source strong { color: var(--text); }
+
+  footer { text-align: center; padding: 2rem; color: var(--muted); font-size: 0.75rem; border-top: 1px solid var(--border); margin-top: 2rem; }
+
+  @media (max-width: 768px) {
+    main { padding: 1rem; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .small-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Training Prophet model on historical data…</div>
+</div>
+
+<header>
+  <div>
+    <h1>🌦 Prophet Weather Forecaster</h1>
+    <p>Powered by Facebook Prophet — real trend decomposition & future prediction</p>
+  </div>
+  <span class="badge">ML-powered</span>
+</header>
+
+<main>
+  <div class="controls">
+    <div class="control-group">
+      <label>City</label>
+      <select id="citySelect"></select>
+    </div>
+    <div class="control-group">
+      <label>Weather variable</label>
+      <select id="varSelect"></select>
+    </div>
+    <div class="control-group">
+      <label>Forecast horizon</label>
+      <select id="horizonSelect">
+        <option value="30">30 days</option>
+        <option value="60">60 days</option>
+        <option value="90">90 days</option>
+        <option value="180">180 days</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Training years</label>
+      <select id="yearsSelect">
+        <option value="2">2 years</option>
+        <option value="3" selected>3 years</option>
+        <option value="5">5 years</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Confidence interval</label>
+      <select id="ciSelect">
+        <option value="80" selected>80%</option>
+        <option value="90">90%</option>
+        <option value="95">95%</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="metrics" id="metrics">
+    <div class="metric"><div class="metric-label">Current avg</div><div class="metric-value neutral">—</div></div>
+    <div class="metric"><div class="metric-label">Forecast avg</div><div class="metric-value neutral">—</div></div>
+    <div class="metric"><div class="metric-label">Std deviation</div><div class="metric-value neutral">—</div></div>
+    <div class="metric"><div class="metric-label">Trend / 30d</div><div class="metric-value neutral">—</div></div>
+  </div>
+
+  <div class="view-tabs">
+    <button class="tab active" data-view="full">Full forecast</button>
+    <button class="tab" data-view="trend">Trend component</button>
+    <button class="tab" data-view="seasonal">Seasonality</button>
+    <button class="tab" data-view="residual">Residuals</button>
+  </div>
+
+  <div class="card chart-grid">
+    <div class="card-title" id="mainTitle">Historical data & Prophet forecast</div>
+    <div class="card-sub" id="mainSub">Observed values, trend, and uncertainty bands</div>
+    <div class="legend" id="mainLegend"></div>
+    <div style="position:relative;height:340px;">
+      <canvas id="mainChart" role="img" aria-label="Main weather forecast chart"></canvas>
+    </div>
+  </div>
+
+  <div class="small-grid">
+    <div class="card">
+      <div class="card-title">Yearly seasonality</div>
+      <div class="card-sub">Annual recurring pattern extracted by Prophet</div>
+      <div style="position:relative;height:190px;">
+        <canvas id="seasonChart" role="img" aria-label="Yearly seasonality"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Weekly seasonality</div>
+      <div class="card-sub">Day-of-week effect extracted by Prophet</div>
+      <div style="position:relative;height:190px;">
+        <canvas id="weekChart" role="img" aria-label="Weekly seasonality"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="margin-bottom:12px">7-day outlook</div>
+    <table>
+      <thead><tr><th>Date</th><th>Forecast</th><th>Lower bound</th><th>Upper bound</th><th>Condition</th></tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="data-source" id="dataSource"></div>
+</main>
+
+<footer>Prophet Weather Forecaster · Facebook Prophet algorithm · Climatological normals (WMO/IMD) · Run locally on port 8000</footer>
+
+<script>
+const API = 'http://127.0.0.1:8000';
+let mainChart, seasonChart, weekChart, currentView = 'full', currentData = null;
+
+const GRID = 'rgba(255,255,255,0.05)';
+const TICK = '#8b949e';
+
+const chartDefaults = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { ticks: { color: TICK, font: { size: 10 }, maxTicksLimit: 10, maxRotation: 30 }, grid: { color: GRID } },
+    y: { ticks: { color: TICK, font: { size: 10 } }, grid: { color: GRID } }
+  }
+};
+
+async function loadMeta() {
+  const [cities, variables] = await Promise.all([
+    fetch(`${API}/cities`).then(r => r.json()),
+    fetch(`${API}/variables`).then(r => r.json()),
+  ]);
+  const cs = document.getElementById('citySelect');
+  cities.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; cs.appendChild(o); });
+  const vs = document.getElementById('varSelect');
+  variables.forEach(v => { const o = document.createElement('option'); o.value = v.id; o.textContent = `${v.label} (${v.unit})`; vs.appendChild(o); });
+}
+
+async function fetchForecast() {
+  const city = document.getElementById('citySelect').value;
+  const variable = document.getElementById('varSelect').value;
+  const horizon = document.getElementById('horizonSelect').value;
+  const years = document.getElementById('yearsSelect').value;
+  const ci = document.getElementById('ciSelect').value;
+
+  showLoading(`Training Prophet on ${years}yr data… fitting model…`);
+  try {
+    const url = `${API}/forecast?city=${city}&variable=${variable}&horizon=${horizon}&ci=${ci}&years=${years}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    currentData = await res.json();
+    renderAll();
+  } catch(e) {
+    alert('Error fetching forecast: ' + e.message + '\n\nMake sure the backend is running:\n  cd backend && python -m uvicorn main:app --host 127.0.0.1 --port 8000');
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderAll() {
+  if (!currentData) return;
+  renderMetrics();
+  renderMainChart();
+  renderSeasonCharts();
+  renderTable();
+  renderDataSource();
+}
+
+function renderMetrics() {
+  const { stats, meta } = currentData;
+  const u = meta.unit;
+  const change = (stats.mean_forecast - stats.mean_historical).toFixed(1);
+  const dir = change >= 0 ? 'up' : 'down';
+  const arrow = change >= 0 ? '↑' : '↓';
+  const sl = stats.trend_slope_30d;
+  const slDir = sl > 0.1 ? 'up' : sl < -0.1 ? 'down' : 'neutral';
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric"><div class="metric-label">Historical avg</div><div class="metric-value neutral">${stats.mean_historical}${u}</div><div class="metric-sub">${meta.data_points} training days</div></div>
+    <div class="metric"><div class="metric-label">Forecast avg</div><div class="metric-value ${dir}">${stats.mean_forecast}${u}</div><div class="metric-sub">${arrow} ${Math.abs(change)}${u} vs historical</div></div>
+    <div class="metric"><div class="metric-label">Std deviation (σ)</div><div class="metric-value neutral">${stats.std_historical}${u}</div><div class="metric-sub">Historical variability</div></div>
+    <div class="metric"><div class="metric-label">Trend / 30d</div><div class="metric-value ${slDir}">${sl > 0 ? '+' : ''}${sl}${u}</div><div class="metric-sub">Prophet trend slope</div></div>
+  `;
+}
+
+function renderMainChart() {
+  const { historical: hist, forecast: fc, meta } = currentData;
+  const u = meta.unit;
+
+  const allDates = [...hist.dates, ...fc.dates];
+  const histLen = hist.dates.length;
+  const futLen = fc.dates.length;
+
+  let datasets = [];
+
+  if (currentView === 'full') {
+    datasets = [
+      {
+        label: 'Observed', data: [...hist.values, ...Array(futLen).fill(null)],
+        borderColor: '#388bfd', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0.3
+      },
+      {
+        label: 'Trend', data: [...hist.trend, ...fc.trend],
+        borderColor: '#3fb950', backgroundColor: 'transparent', borderWidth: 2,
+        borderDash: [6, 3], pointRadius: 0, tension: 0.4
+      },
+      {
+        label: 'Forecast', data: [...Array(histLen).fill(null), ...fc.values],
+        borderColor: '#f0883e', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.4
+      },
+      {
+        label: 'CI upper', data: [...Array(histLen).fill(null), ...fc.upper],
+        borderColor: 'transparent', backgroundColor: 'rgba(240,136,62,0.12)', fill: '+1', pointRadius: 0, tension: 0.4
+      },
+      {
+        label: 'CI lower', data: [...Array(histLen).fill(null), ...fc.lower],
+        borderColor: 'transparent', backgroundColor: 'rgba(240,136,62,0.12)', fill: false, pointRadius: 0, tension: 0.4
+      },
+    ];
+    setLegend('mainLegend', [
+      { color: '#388bfd', label: 'Observed (historical)' },
+      { color: '#3fb950', label: 'Prophet trend', dash: true },
+      { color: '#f0883e', label: `Forecast (${meta.horizon}d)` },
+      { color: 'rgba(240,136,62,0.4)', label: `${meta.ci}% confidence interval`, band: true },
+    ]);
+    document.getElementById('mainTitle').textContent = `Historical data & Prophet forecast — ${meta.city}`;
+    document.getElementById('mainSub').textContent = `Observed values, extracted trend, and ${meta.ci}% uncertainty bands`;
+
+  } else if (currentView === 'trend') {
+    datasets = [{
+      label: 'Trend', data: [...hist.trend, ...fc.trend],
+      borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.08)', fill: true, borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.4
+    }];
+    setLegend('mainLegend', [{ color: '#3fb950', label: 'Piecewise linear trend', dash: true }]);
+    document.getElementById('mainTitle').textContent = 'Trend component — Prophet piecewise regression';
+    document.getElementById('mainSub').textContent = 'Long-term direction after removing seasonality & noise';
+
+  } else if (currentView === 'seasonal') {
+    const seasonal = hist.values.map((v, i) => parseFloat((v - hist.trend[i]).toFixed(2)));
+    datasets = [{
+      label: 'Seasonal', data: [...seasonal, ...Array(futLen).fill(null)],
+      borderColor: '#bc8cff', backgroundColor: 'rgba(188,140,255,0.1)', fill: true, borderWidth: 1.5, pointRadius: 0, tension: 0.4
+    }];
+    setLegend('mainLegend', [{ color: '#bc8cff', label: 'Annual seasonality component' }]);
+    document.getElementById('mainTitle').textContent = 'Seasonal component extracted by Prophet';
+    document.getElementById('mainSub').textContent = 'Periodic patterns (trend removed)';
+
+  } else if (currentView === 'residual') {
+    const residuals = hist.values.map((v, i) => parseFloat((v - hist.trend[i]).toFixed(2)));
+    datasets = [
+      {
+        label: 'Residuals', data: [...residuals, ...Array(futLen).fill(null)],
+        borderColor: '#d29922', backgroundColor: 'rgba(210,153,34,0.08)', fill: true, borderWidth: 1, pointRadius: 0, tension: 0.2
+      },
+      {
+        label: 'Zero', data: new Array(histLen + futLen).fill(0),
+        borderColor: '#8b949e', borderWidth: 1, borderDash: [4,4], pointRadius: 0
+      }
+    ];
+    setLegend('mainLegend', [{ color: '#d29922', label: 'Residuals (unexplained variation)' }]);
+    document.getElementById('mainTitle').textContent = 'Residuals — what Prophet could not explain';
+    document.getElementById('mainSub').textContent = 'Noise after removing trend + seasonality';
+  }
+
+  if (mainChart) mainChart.destroy();
+  mainChart = new Chart(document.getElementById('mainChart'), {
+    type: 'line',
+    data: { labels: allDates, datasets },
+    options: { ...chartDefaults, scales: {
+      x: { ...chartDefaults.scales.x, ticks: { ...chartDefaults.scales.x.ticks, callback: (_, i) => allDates[i]?.slice(5) } },
+      y: { ...chartDefaults.scales.y, ticks: { ...chartDefaults.scales.y.ticks, callback: v => v + u } }
+    }}
+  });
+}
+
+function renderSeasonCharts() {
+  const { seasonality, meta } = currentData;
+  const u = meta.unit;
+
+  if (seasonChart) seasonChart.destroy();
+  seasonChart = new Chart(document.getElementById('seasonChart'), {
+    type: 'line',
+    data: {
+      labels: seasonality.monthly_labels,
+      datasets: [{ data: seasonality.monthly_values, borderColor: '#bc8cff', backgroundColor: 'rgba(188,140,255,0.1)', fill: true, pointRadius: 4, pointBackgroundColor: '#bc8cff', tension: 0.4, borderWidth: 2 }]
+    },
+    options: { ...chartDefaults, scales: {
+      x: { ...chartDefaults.scales.x },
+      y: { ...chartDefaults.scales.y, ticks: { ...chartDefaults.scales.y.ticks, callback: v => v + u } }
+    }}
+  });
+
+  const effects = seasonality.weekly_values;
+  if (weekChart) weekChart.destroy();
+  weekChart = new Chart(document.getElementById('weekChart'), {
+    type: 'bar',
+    data: {
+      labels: seasonality.weekly_labels,
+      datasets: [{ data: effects, backgroundColor: effects.map(v => v >= 0 ? 'rgba(63,185,80,0.7)' : 'rgba(248,81,73,0.7)'), borderRadius: 4 }]
+    },
+    options: { ...chartDefaults, scales: {
+      x: { ...chartDefaults.scales.x },
+      y: { ...chartDefaults.scales.y, ticks: { ...chartDefaults.scales.y.ticks, callback: v => v + u } }
+    }}
+  });
+}
+
+function renderTable() {
+  const { forecast: fc, meta } = currentData;
+  const u = meta.unit;
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  for (let i = 0; i < Math.min(7, fc.dates.length); i++) {
+    const d = new Date(fc.dates[i]);
+    const dateStr = d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+    const val = fc.values[i];
+    let cond, cls;
+    if (meta.variable === 'Temperature') {
+      if (val > 40) { cond = 'Extreme heat'; cls = 'pill-high'; }
+      else if (val > 32) { cond = 'Very warm'; cls = 'pill-warm'; }
+      else if (val > 22) { cond = 'Pleasant'; cls = 'pill-ok'; }
+      else if (val > 10) { cond = 'Cool'; cls = 'pill-cool'; }
+      else { cond = 'Cold'; cls = 'pill-cool'; }
+    } else if (meta.variable === 'Rainfall') {
+      if (val > 15) { cond = 'Heavy rain'; cls = 'pill-rain'; }
+      else if (val > 5)  { cond = 'Moderate rain'; cls = 'pill-rain'; }
+      else if (val > 1)  { cond = 'Light rain'; cls = 'pill-cool'; }
+      else { cond = 'Dry'; cls = 'pill-ok'; }
+    } else if (meta.variable === 'Humidity') {
+      if (val > 85) { cond = 'Very humid'; cls = 'pill-high'; }
+      else if (val > 70) { cond = 'Humid'; cls = 'pill-warm'; }
+      else if (val > 50) { cond = 'Comfortable'; cls = 'pill-ok'; }
+      else { cond = 'Dry air'; cls = 'pill-cool'; }
+    } else {
+      if (val > 30) { cond = 'Strong wind'; cls = 'pill-high'; }
+      else if (val > 20) { cond = 'Breezy'; cls = 'pill-warm'; }
+      else { cond = 'Calm'; cls = 'pill-ok'; }
+    }
+    tbody.innerHTML += `<tr>
+      <td>${dateStr}</td>
+      <td style="font-weight:600">${val}${u}</td>
+      <td style="color:var(--muted)">${fc.lower[i]}${u}</td>
+      <td style="color:var(--muted)">${fc.upper[i]}${u}</td>
+      <td><span class="pill ${cls}">${cond}</span></td>
+    </tr>`;
+  }
+}
+
+function renderDataSource() {
+  const { meta } = currentData;
+  document.getElementById('dataSource').innerHTML = `
+    <strong>Data source:</strong> ${meta.data_source} &nbsp;|&nbsp;
+    <strong>Training data:</strong> ${meta.data_from} → ${meta.data_to} (${meta.data_points} daily observations) &nbsp;|&nbsp;
+    <strong>Model:</strong> Facebook Prophet (piecewise linear trend + Fourier seasonality + MCMC uncertainty)
+  `;
+}
+
+function setLegend(id, items) {
+  document.getElementById(id).innerHTML = items.map(l =>
+    l.band ? `<span class="legend-item"><span class="lband" style="background:${l.color}"></span>${l.label}</span>`
+    : l.dash ? `<span class="legend-item"><span class="ldash" style="border-color:${l.color}"></span>${l.label}</span>`
+    : `<span class="legend-item"><span class="lsq" style="background:${l.color}"></span>${l.label}</span>`
+  ).join('');
+}
+
+function showLoading(msg) { document.getElementById('loadingText').textContent = msg; document.getElementById('loadingOverlay').classList.add('show'); }
+function hideLoading() { document.getElementById('loadingOverlay').classList.remove('show'); }
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentView = tab.dataset.view;
+    renderMainChart();
+  });
+});
+
+['citySelect','varSelect','horizonSelect','yearsSelect','ciSelect'].forEach(id => {
+  document.getElementById(id).addEventListener('change', fetchForecast);
+});
+
+(async () => {
+  await loadMeta();
+  await fetchForecast();
+})();
+</script>
+</body>
+</html>
